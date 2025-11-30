@@ -20,6 +20,7 @@ export async function POST(request) {
   const webhookSecret = process.env.CLERK_WEBHOOK_SECRET;
 
   if (!webhookSecret) {
+    console.error("Missing CLERK_WEBHOOK_SECRET environment variable");
     return new Response("Missing CLERK_WEBHOOK_SECRET", { status: 500 });
   }
 
@@ -39,9 +40,14 @@ export async function POST(request) {
   }
 
   const { id, email_addresses, first_name, last_name, image_url, created_at } =
-    evt.data;
+    evt.data || {};
 
   const eventType = evt.type;
+
+  if (!id) {
+    console.error("Missing user id in webhook payload");
+    return new Response("Missing user id", { status: 400 });
+  }
 
   try {
     const db = await getDb();
@@ -57,7 +63,7 @@ export async function POST(request) {
             firstName: first_name || null,
             lastName: last_name || null,
             imageUrl: image_url || null,
-            createdAt: new Date(created_at),
+            createdAt: created_at ? new Date(created_at) : new Date(),
             updatedAt: new Date(),
           },
         },
@@ -85,8 +91,28 @@ export async function POST(request) {
 
     return new Response("ok", { status: 200 });
   } catch (error) {
-    console.error("Clerk webhook error", error);
-    return new Response("Webhook processing failed", { status: 500 });
+    // Log detailed error information
+    console.error("Clerk webhook MongoDB error:", error);
+    console.error("Error details:", {
+      message: error.message,
+      name: error.name,
+      eventType,
+      userId: id,
+      hasMongoUri: !!process.env.MONGODB_URI,
+    });
+
+    // Return 500 but with detailed error message for debugging
+    return new Response(
+      JSON.stringify({ 
+        error: "Webhook processing failed", 
+        message: error.message,
+        type: error.name || "UnknownError"
+      }),
+      { 
+        status: 500,
+        headers: { "Content-Type": "application/json" }
+      }
+    );
   }
 }
 
