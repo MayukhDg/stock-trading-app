@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+## PulseIQ – AI-powered Zerodha copilot
 
-## Getting Started
+This repository contains a full-stack reference implementation for an AI-enhanced stock analysis platform. It showcases how to combine Zerodha (Kite Connect), MongoDB, Clerk, Stripe, and OpenAI into a cohesive experience that continuously analyses a user’s portfolio and pushes contextual tips.
 
-First, run the development server:
+### Stack
+
+- **Next.js 16 / App Router** with Tailwind 4 for UI
+- **Clerk** for auth + middleware-protected dashboard/API routes
+- **MongoDB** for holdings, recommendations, and subscription metadata
+- **Stripe** for paid plans and webhooks
+- **Zerodha Kite Connect** helpers for linking accounts and syncing holdings
+- **OpenAI + News API** for summarised insights
+
+### Local setup
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Copy `env.example` to `.env.local` and populate the secrets:
+
+```bash
+cp env.example .env.local
+```
+
+   Required values:
+
+   - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`
+   - `MONGODB_URI`, `MONGODB_DB`
+   - `ZERODHA_API_KEY`, `ZERODHA_API_SECRET`
+   - `OPENAI_API_KEY`, `NEWS_API_KEY`
+   - `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET`
+   - `CRON_SECRET` for scheduled sync protection
+
+3. Run the dev server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Visit `http://localhost:3000` for the landing page and `/dashboard` (after signing in via Clerk) for the authenticated experience.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+### Key folders
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `src/app` – App Router routes (`/`, `/dashboard`, `/subscribe`, API endpoints)
+- `src/components` – marketing sections, dashboard widgets, Stripe form
+- `src/lib` – integrations (MongoDB, Zerodha, OpenAI, Stripe, News API)
+- `src/app/api` – REST endpoints for portfolio sync, AI, news, Stripe checkout, cron worker, etc.
 
-## Learn More
+### Operational notes
 
-To learn more about Next.js, take a look at the following resources:
+- Clerk middleware protects all sensitive routes; update `src/middleware.js` if you add new APIs.
+- Stripe webhook route requires the raw body, so deploy on the Node runtime and configure the webhook secret.
+- The cron endpoint (`/api/cron/sync`) can be scheduled via Vercel cron / GitHub Actions / Teraform using the `CRON_SECRET` header.
+- AI/news endpoints gracefully degrade to mock data until keys are present.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Feel free to extend this baseline with your own automation workflows, analytics, or broker integrations. Contributions are welcome!***
