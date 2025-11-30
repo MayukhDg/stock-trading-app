@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 
+import { getDb } from "@/lib/db";
 import { stripe } from "@/lib/stripe";
 
 export const runtime = "nodejs";
@@ -16,10 +17,92 @@ export async function POST(request) {
       process.env.STRIPE_WEBHOOK_SECRET || "",
     );
 
+    const db = await getDb();
+
     switch (event.type) {
-      case "checkout.session.completed":
-        // TODO: persist subscription state in MongoDB via event.data.object
+      case "checkout.session.completed": {
+        const session = event.data.object;
+        const clerkUserId = session.metadata?.clerkUserId;
+
+        // Store order/subscription in MongoDB
+        await db.collection("orders").insertOne({
+          stripeSessionId: session.id,
+          stripeCustomerId: session.customer,
+          clerkUserId: clerkUserId,
+          amountTotal: session.amount_total,
+          currency: session.currency,
+          paymentStatus: session.payment_status,
+          subscriptionId: session.subscription || null,
+          createdAt: new Date(),
+        });
+
+        // If there's a subscription, also store/update subscription info
+        if (session.subscription && clerkUserId) {
+          const subscription = await stripe.subscriptions.retrieve(
+            session.subscription
+          );
+
+          await db.collection("subscriptions").updateOne(
+            { clerkUserId: clerkUserId },
+            {
+              $set: {
+                clerkUserId: clerkUserId,
+                stripeSubscriptionId: subscription.id,
+                stripeCustomerId: subscription.customer,
+                status: subscription.status,
+                currentPeriodStart: new Date(
+                  subscription.current_period_start * 1000
+                ),
+                currentPeriodEnd: new Date(
+                  subscription.current_period_end * 1000
+                ),
+                cancelAtPeriodEnd: subscription.cancel_at_period_end,
+                updatedAt: new Date(),
+              },
+            },
+            { upsert: true }
+          );
+        }
+
+        console.log("Order stored in MongoDB:", session.id);
         break;
+      }
+      case "customer.subscription.updated":
+      case "customer.subscription.deleted": {
+        const subscription = event.data.object;
+        const customerId = subscription.customer;
+
+        // Find the user by Stripe customer ID
+        const order = await db
+          .collection("orders")
+          .findOne({ stripeCustomerId: customerId });
+
+        if (order && order.clerkUserId) {
+          await db.collection("subscriptions").updateOne(
+            { clerkUserId: order.clerkUserId },
+            {
+              $set: {
+                status: subscription.status,
+                currentPeriodStart: new Date(
+                  subscription.current_period_start * 1000
+                ),
+                currentPeriodEnd: new Date(
+                  subscription.current_period_end * 1000
+                ),
+                cancelAtPeriodEnd: subscription.cancel_at_period_end,
+                updatedAt: new Date(),
+              },
+            }
+          );
+
+          console.log(
+            "Subscription updated in MongoDB:",
+            subscription.id,
+            order.clerkUserId
+          );
+        }
+        break;
+      }
       default:
         break;
     }
