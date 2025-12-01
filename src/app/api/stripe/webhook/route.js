@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request) {
   const body = await request.text();
-  const signature = headers().get("stripe-signature");
+  const headersList = await headers();
+  const signature = headersList.get("stripe-signature");
 
   try {
     const event = stripe.webhooks.constructEvent(
