@@ -7,7 +7,7 @@ import { InsightFeed } from "@/components/dashboard/InsightFeed";
 import { NewsFeed } from "@/components/dashboard/NewsFeed";
 import { PortfolioTable } from "@/components/dashboard/PortfolioTable";
 import { StatsSummary } from "@/components/dashboard/StatsSummary";
-import { getDb } from "@/lib/db";
+import { dbConnect } from "@/lib/db";
 import { fetchHoldings } from "@/lib/zerodha";
 import { generateInsights } from "@/lib/ai";
 import { fetchNews } from "@/lib/news";
@@ -76,7 +76,7 @@ export default async function DashboardPage() {
     );
   }
 
-  const db = await getDb();
+  const db = await dbConnect();
   const brokerLink = await db.collection("brokerLinks").findOne({ userId });
 
   const isConnected = !!brokerLink?.accessToken;

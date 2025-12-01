@@ -1,8 +1,7 @@
 import { headers } from "next/headers";
 import { Webhook } from "svix";
 
-import { getDb } from "@/lib/db";
-
+import { dbConnect } from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -47,10 +46,10 @@ export async function POST(request) {
   if (!id) {
     console.error("Missing user id in webhook payload");
     return new Response("Missing user id", { status: 400 });
-  }
+  } 
 
   try {
-    const db = await getDb();
+    const db = await dbConnect();
 
     if (eventType === "user.created") {
       // Store user data in MongoDB on first login
