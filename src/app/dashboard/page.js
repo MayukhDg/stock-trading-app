@@ -8,6 +8,7 @@ import { NewsFeed } from "@/components/dashboard/NewsFeed";
 import { PortfolioTable } from "@/components/dashboard/PortfolioTable";
 import { StatsSummary } from "@/components/dashboard/StatsSummary";
 import { dbConnect } from "@/lib/db";
+import { BrokerLink, Holdings } from "@/models";
 import { fetchHoldings } from "@/lib/zerodha";
 import { generateInsights } from "@/lib/ai";
 import { fetchNews } from "@/lib/news";
@@ -76,8 +77,8 @@ export default async function DashboardPage() {
     );
   }
 
-  const db = await dbConnect();
-  const brokerLink = await db.collection("brokerLinks").findOne({ userId });
+  await dbConnect();
+  const brokerLink = await BrokerLink.findOne({ userId }).lean();
 
   const isConnected = !!brokerLink?.accessToken;
 
@@ -94,18 +95,17 @@ export default async function DashboardPage() {
       });
 
       // Transform holdings data to match expected format
-      // Zerodha API returns: { data: [{ tradingsymbol, quantity, average_price, last_price, pnl, ... }] }
       holdings = (holdingsData?.data || []).map((h) => ({
         symbol: h.tradingsymbol || h.symbol || "N/A",
         quantity: h.quantity || 0,
         averagePrice: h.average_price || 0,
         ltp: h.last_price || h.ltp || 0,
         pnl: h.pnl || 0,
-        last_price: h.last_price || h.ltp || 0, // Keep for stats calculation
+        last_price: h.last_price || h.ltp || 0,
       }));
 
-      // Update holdings in database
-      await db.collection("holdings").updateOne(
+      // Update holdings in database using Mongoose
+      await Holdings.findOneAndUpdate(
         { userId },
         {
           $set: {
@@ -114,7 +114,7 @@ export default async function DashboardPage() {
             syncedAt: new Date(),
           },
         },
-        { upsert: true }
+        { upsert: true, new: true }
       );
 
       // Calculate stats from real holdings
@@ -161,7 +161,6 @@ export default async function DashboardPage() {
       }
     } catch (error) {
       console.error("Failed to fetch portfolio data:", error);
-      // If there's an error, still show the connection card
     }
   }
 
@@ -236,4 +235,3 @@ export default async function DashboardPage() {
     </div>
   );
 }
-

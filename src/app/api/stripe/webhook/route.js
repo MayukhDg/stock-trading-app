@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
-
-import { getDb } from "@/lib/db";
+import { dbConnect } from "@/lib/db";
+import { Order, Subscription } from "@/models";
 import { stripe } from "@/lib/stripe";
 
 export const runtime = "nodejs";
@@ -14,18 +14,18 @@ export async function POST(request) {
     const event = stripe.webhooks.constructEvent(
       body,
       signature,
-      process.env.STRIPE_WEBHOOK_SECRET || "",
+      process.env.STRIPE_WEBHOOK_SECRET || ""
     );
 
-    const db = await getDb();
+    await dbConnect();
 
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object;
         const clerkUserId = session.metadata?.clerkUserId;
 
-        // Store order/subscription in MongoDB
-        await db.collection("orders").insertOne({
+        // Store order in MongoDB using Mongoose
+        await Order.create({
           stripeSessionId: session.id,
           stripeCustomerId: session.customer,
           clerkUserId: clerkUserId,
@@ -36,13 +36,13 @@ export async function POST(request) {
           createdAt: new Date(),
         });
 
-        // If there's a subscription, also store/update subscription info
+        // If there's a subscription, store/update subscription info
         if (session.subscription && clerkUserId) {
           const subscription = await stripe.subscriptions.retrieve(
             session.subscription
           );
 
-          await db.collection("subscriptions").updateOne(
+          await Subscription.findOneAndUpdate(
             { clerkUserId: clerkUserId },
             {
               $set: {
@@ -60,7 +60,7 @@ export async function POST(request) {
                 updatedAt: new Date(),
               },
             },
-            { upsert: true }
+            { upsert: true, new: true }
           );
         }
 
@@ -73,12 +73,10 @@ export async function POST(request) {
         const customerId = subscription.customer;
 
         // Find the user by Stripe customer ID
-        const order = await db
-          .collection("orders")
-          .findOne({ stripeCustomerId: customerId });
+        const order = await Order.findOne({ stripeCustomerId: customerId });
 
         if (order && order.clerkUserId) {
-          await db.collection("subscriptions").updateOne(
+          await Subscription.findOneAndUpdate(
             { clerkUserId: order.clerkUserId },
             {
               $set: {
@@ -113,4 +111,3 @@ export async function POST(request) {
     return new Response("Webhook error", { status: 400 });
   }
 }
-

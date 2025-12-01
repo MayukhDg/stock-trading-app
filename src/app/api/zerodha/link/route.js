@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { z } from "zod";
-
-import { getDb } from "@/lib/db";
+import { dbConnect } from "@/lib/db";
+import { BrokerLink } from "@/models";
 import { exchangeRequestToken } from "@/lib/zerodha";
 
 const schema = z.object({
@@ -25,8 +25,9 @@ export async function POST(request) {
 
   try {
     const tokenPayload = await exchangeRequestToken(parsed.data);
-    const db = await getDb();
-    await db.collection("brokerLinks").updateOne(
+    await dbConnect();
+
+    await BrokerLink.findOneAndUpdate(
       { userId },
       {
         $set: {
@@ -37,16 +38,15 @@ export async function POST(request) {
           updatedAt: new Date(),
         },
       },
-      { upsert: true },
+      { upsert: true, new: true }
     );
 
     return Response.redirect(
       `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?linked=success`,
-      302,
+      302
     );
   } catch (error) {
     console.error("Zerodha link error", error);
     return Response.json({ error: "Failed to link Zerodha" }, { status: 500 });
   }
 }
-

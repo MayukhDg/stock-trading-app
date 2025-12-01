@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
-
-import { getDb } from "@/lib/db";
+import { dbConnect } from "@/lib/db";
+import { BrokerLink, Holdings } from "@/models";
 import { fetchHoldings } from "@/lib/zerodha";
 
 export async function GET() {
@@ -10,16 +10,25 @@ export async function GET() {
   }
 
   try {
-    const db = await getDb();
-    const link = await db.collection("brokerLinks").findOne({ userId });
+    await dbConnect();
+    const link = await BrokerLink.findOne({ userId });
 
     if (!link?.accessToken) {
       return Response.json({ holdings: [] });
     }
 
-    const holdings = await fetchHoldings({ accessToken: link.accessToken });
+    const holdingsData = await fetchHoldings({ accessToken: link.accessToken });
 
-    await db.collection("holdings").updateOne(
+    const holdings = (holdingsData?.data || []).map((h) => ({
+      symbol: h.tradingsymbol || h.symbol || "N/A",
+      quantity: h.quantity || 0,
+      averagePrice: h.average_price || 0,
+      ltp: h.last_price || h.ltp || 0,
+      pnl: h.pnl || 0,
+      last_price: h.last_price || h.ltp || 0,
+    }));
+
+    await Holdings.findOneAndUpdate(
       { userId },
       {
         $set: {
@@ -28,7 +37,7 @@ export async function GET() {
           syncedAt: new Date(),
         },
       },
-      { upsert: true },
+      { upsert: true, new: true }
     );
 
     return Response.json({ holdings });
@@ -37,4 +46,3 @@ export async function GET() {
     return Response.json({ error: "Failed to fetch portfolio" }, { status: 500 });
   }
 }
-

@@ -1,16 +1,37 @@
 import mongoose from 'mongoose';
 
-let conn = null;
+let isConnected = false;
 
 export async function dbConnect() {
-  if (conn) return conn;
-  if (mongoose.connection.readyState >= 1) {
-    conn = mongoose.connection;
-    return conn;
+  if (isConnected) {
+    return mongoose.connection;
   }
+
+  if (mongoose.connection.readyState >= 1) {
+    isConnected = true;
+    return mongoose.connection;
+  }
+
   const uri = process.env.MONGODB_URI;
-  if (!uri) throw new Error('MONGODB_URI missing');
-  await mongoose.connect(uri, { dbName: 'bizbot' });
-  conn = mongoose.connection;
-  return conn;
+  
+  if (!uri) {
+    throw new Error('MONGODB_URI environment variable is not defined');
+  }
+
+  try {
+    await mongoose.connect(uri, {
+      dbName: 'bizbot',
+      bufferCommands: false,
+    });
+
+    isConnected = true;
+    console.log('MongoDB connected successfully');
+    return mongoose.connection;
+  } catch (error) {
+    console.error('MongoDB connection error:', error);
+    throw error;
+  }
 }
+
+// Alias for backward compatibility
+export const getDb = dbConnect;

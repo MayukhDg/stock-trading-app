@@ -1,4 +1,5 @@
-import { getDb } from "@/lib/db";
+import { dbConnect } from "@/lib/db";
+import { BrokerLink, Holdings } from "@/models";
 import { fetchHoldings } from "@/lib/zerodha";
 
 export async function POST(request) {
@@ -7,23 +8,34 @@ export async function POST(request) {
     return new Response("Forbidden", { status: 403 });
   }
 
-  const db = await getDb();
-  const links = await db.collection("brokerLinks").find().toArray();
+  try {
+    await dbConnect();
+    const links = await BrokerLink.find({ accessToken: { $exists: true, $ne: null } });
 
-  for (const link of links) {
-    if (!link.accessToken) continue;
-    try {
-      const holdings = await fetchHoldings({ accessToken: link.accessToken });
-      await db.collection("holdings").updateOne(
-        { userId: link.userId },
-        { $set: { holdings, syncedAt: new Date() } },
-        { upsert: true },
-      );
-    } catch (error) {
-      console.error("Cron sync failed for", link.userId, error);
+    for (const link of links) {
+      if (!link.accessToken) continue;
+      
+      try {
+        const holdingsData = await fetchHoldings({ accessToken: link.accessToken });
+        
+        await Holdings.findOneAndUpdate(
+          { userId: link.userId },
+          { 
+            $set: { 
+              holdings: holdingsData?.data || [], 
+              syncedAt: new Date() 
+            } 
+          },
+          { upsert: true }
+        );
+      } catch (error) {
+        console.error("Cron sync failed for", link.userId, error);
+      }
     }
+
+    return Response.json({ ok: true });
+  } catch (error) {
+    console.error("Cron sync error:", error);
+    return Response.json({ error: "Sync failed" }, { status: 500 });
   }
-
-  return Response.json({ ok: true });
 }
-
