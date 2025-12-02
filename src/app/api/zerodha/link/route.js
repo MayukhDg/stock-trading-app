@@ -11,72 +11,105 @@ const schema = z.object({
 export async function POST(request) {
   const user = await currentUser();
   const userId = user?.id;
+  
   if (!userId) {
     return Response.json({ error: "Unauthenticated" }, { status: 401 });
   }
 
   const formData = await request.formData();
+  const rawToken = formData.get("requestToken");
+  
+  // Clean the token thoroughly
+  const cleanedToken = (rawToken || "").toString().trim().replace(/\s+/g, '');
+  
   const parsed = schema.safeParse({
-    requestToken: formData.get("requestToken"),
+    requestToken: cleanedToken,
   });
 
   if (!parsed.success) {
-    return Response.json({ error: "Invalid request token" }, { status: 400 });
+    console.error("Token validation failed:", parsed.error);
+    return Response.json({ 
+      error: "Invalid request token format",
+      details: parsed.error.errors 
+    }, { status: 400 });
   }
 
   try {
-    const tokenPayload = await exchangeRequestToken(parsed.data);
+    console.log("Attempting to exchange request token for user:", userId);
+    
+    const tokenPayload = await exchangeRequestToken({ 
+      requestToken: parsed.data.requestToken 
+    });
+    
+    if (!tokenPayload?.data?.access_token) {
+      throw new Error("Invalid token response from Zerodha");
+    }
+
     await dbConnect();
 
-    await BrokerLink.findOneAndUpdate(
+    const brokerLink = await BrokerLink.findOneAndUpdate(
       { userId },
       {
         $set: {
           userId,
-          accessToken: tokenPayload?.data?.access_token,
-          publicToken: tokenPayload?.data?.public_token,
-          refreshToken: tokenPayload?.data?.refresh_token,
+          accessToken: tokenPayload.data.access_token,
+          publicToken: tokenPayload.data.public_token || null,
+          refreshToken: tokenPayload.data.refresh_token || null,
           updatedAt: new Date(),
         },
       },
       { upsert: true, new: true }
     );
 
+    console.log("Successfully linked Zerodha for user:", userId);
+
     return Response.redirect(
       `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?linked=success`,
       302
     );
   } catch (error) {
-    console.error("Zerodha link error", error);
+    console.error("Zerodha link error:", error);
     const msg = String(error?.message || error);
-    // If token is expired or invalid, instruct client to restart the flow
+    
+    // Check for specific error types
     if (/invalid|expired|TokenException/i.test(msg)) {
-      return Response.json({ error: "token_expired", action: "/api/zerodha/start", detail: msg }, { status: 400 });
+      return Response.json({ 
+        error: "token_expired", 
+        action: "/api/zerodha/start", 
+        detail: msg 
+      }, { status: 400 });
     }
 
-    // Return error message for debugging (safe in dev). In prod you may want to hide details.
-    return Response.json({ error: "Failed to link Zerodha", detail: msg }, { status: 500 });
+    if (msg.includes("checksum")) {
+      return Response.json({ 
+        error: "invalid_credentials",
+        detail: "API credentials validation failed. Please check your ZERODHA_API_KEY and ZERODHA_API_SECRET environment variables.",
+        hint: "Ensure there are no extra spaces or special characters in your .env file"
+      }, { status: 500 });
+    }
+
+    return Response.json({ 
+      error: "Failed to link Zerodha", 
+      detail: msg 
+    }, { status: 500 });
   }
 }
 
-
-// ...existing code...
 export async function GET(request) {
   const user = await currentUser();
   const userId = user?.id;
   const url = new URL(request.url);
-  const requestToken = url.searchParams.get("request_token") || url.searchParams.get("requestToken");
+  const rawToken = url.searchParams.get("request_token") || url.searchParams.get("requestToken");
+  
+  // Clean the token
+  const requestToken = (rawToken || "").toString().trim().replace(/\s+/g, '');
 
-  // If user is not signed in (no Clerk session) but Kite redirected here with a request_token,
-  // redirect the browser to the client callback page which will preserve cookies and POST the token.
+  // Handle unauthenticated users
   if (!userId) {
     if (requestToken) {
-      const clientCallback = `${process.env.NEXT_PUBLIC_APP_URL}/zerodha/callback?request_token=${encodeURIComponent(
-        requestToken
-      )}`;
+      const clientCallback = `${process.env.NEXT_PUBLIC_APP_URL}/zerodha/callback?request_token=${encodeURIComponent(requestToken)}`;
       return Response.redirect(clientCallback, 302);
     }
-
     return Response.json({ error: "Unauthenticated" }, { status: 401 });
   }
 
@@ -85,7 +118,14 @@ export async function GET(request) {
   }
 
   try {
+    console.log("GET: Attempting to exchange request token for user:", userId);
+    
     const tokenPayload = await exchangeRequestToken({ requestToken });
+    
+    if (!tokenPayload?.data?.access_token) {
+      throw new Error("Invalid token response from Zerodha");
+    }
+
     await dbConnect();
 
     await BrokerLink.findOneAndUpdate(
@@ -93,27 +133,43 @@ export async function GET(request) {
       {
         $set: {
           userId,
-          accessToken: tokenPayload?.data?.access_token,
-          publicToken: tokenPayload?.data?.public_token,
-          refreshToken: tokenPayload?.data?.refresh_token,
+          accessToken: tokenPayload.data.access_token,
+          publicToken: tokenPayload.data.public_token || null,
+          refreshToken: tokenPayload.data.refresh_token || null,
           updatedAt: new Date(),
         },
       },
       { upsert: true, new: true }
     );
 
+    console.log("GET: Successfully linked Zerodha for user:", userId);
+
     return Response.redirect(
       `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?linked=success`,
       302
     );
   } catch (error) {
-    console.error("Zerodha link error", error);
+    console.error("GET: Zerodha link error:", error);
     const msg = String(error?.message || error);
+    
     if (/invalid|expired|TokenException/i.test(msg)) {
-      // If user is signed in but token expired, redirect them to start a new login flow
-      return Response.json({ error: "token_expired", action: "/api/zerodha/start", detail: msg }, { status: 400 });
+      // Redirect to restart the flow
+      return Response.redirect(
+        `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?error=token_expired`,
+        302
+      );
     }
 
-    return Response.json({ error: "Failed to link Zerodha", detail: msg }, { status: 500 });
+    if (msg.includes("checksum")) {
+      return Response.redirect(
+        `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?error=invalid_credentials`,
+        302
+      );
+    }
+
+    return Response.redirect(
+      `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?error=link_failed`,
+      302
+    );
   }
 }
