@@ -1,10 +1,11 @@
-import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@clerk/nextjs/server";
 import { dbConnect } from "@/lib/db";
 import { BrokerLink, Holdings } from "@/models";
 import { fetchHoldings } from "@/lib/zerodha";
 
 export async function GET() {
-  const { userId } = auth();
+  const user = await currentUser();
+  const userId = user?.id;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }

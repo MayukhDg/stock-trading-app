@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@clerk/nextjs/server";
 import { Button } from "../ui/button";
 import { UserButtonWrapper } from "./UserButtonWrapper";
 
@@ -11,7 +11,8 @@ const navLinks = [
 ];
 
 export async function Navbar() {
-  const { userId } = await auth();
+  const user = await currentUser();
+  const userId = user?.id;
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/5 bg-slate-950/80 backdrop-blur-xl">

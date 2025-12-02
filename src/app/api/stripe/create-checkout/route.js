@@ -1,9 +1,15 @@
-import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@clerk/nextjs/server";
 
 import { STRIPE_PRICE_ID, stripe } from "@/lib/stripe";
 
 export async function POST() {
-  const { userId, sessionClaims } = auth();
+  const user = await currentUser();
+  const userId = user?.id;
+  const email =
+    user?.primaryEmailAddress?.emailAddress ||
+    (user?.emailAddresses && user.emailAddresses[0]?.emailAddress) ||
+    null;
+
   if (!userId) {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }

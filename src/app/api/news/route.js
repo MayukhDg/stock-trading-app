@@ -1,4 +1,4 @@
-import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@clerk/nextjs/server";
 import { z } from "zod";
 
 import { fetchNews } from "@/lib/news";
@@ -8,7 +8,8 @@ const schema = z.object({
 });
 
 export async function POST(request) {
-  const { userId } = auth();
+  const user = await currentUser();
+  const userId = user?.id;
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
