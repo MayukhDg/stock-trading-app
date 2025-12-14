@@ -66,7 +66,7 @@ function calculateStats(holdings) {
 export default async function DashboardPage() {
   const user = await currentUser();
   const userId = user?.id;
-
+  
   if (!userId || !user) {
     return (
       <div className="min-h-screen bg-slate-950 px-6 py-10 text-white">
@@ -87,6 +87,9 @@ export default async function DashboardPage() {
   let news = [];
   let stats = [];
 
+  console.log("Broker link:", brokerLink);
+
+  
   if (isConnected) {
     try {
       // Fetch holdings from Zerodha
